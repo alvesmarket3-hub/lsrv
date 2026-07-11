@@ -3,7 +3,6 @@ import time
 import os
 import sys
 from rebrowser_playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-from playwright_stealth import stealth_sync
 
 ACCOUNTS_FILE = "accounts.txt"
 MAX_CONCURRENT = 2
@@ -67,7 +66,14 @@ def attack_worker(account):
                     slow_mo=250
                 )
                 page = context.new_page()
-                stealth_sync(page)
+                
+                # rebrowser-playwright zaten stealth özelliklerine sahip,
+                # ek olarak manuel init script ekleyelim
+                page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                """)
 
                 # Giriş
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
