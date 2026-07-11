@@ -12,8 +12,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Artık playwright paketi kurulu olduğu için CLI çalışır
-RUN playwright install chromium chromium-headless-shell
+# rebrowser-playwright'ın kendi browser'larını kur
+RUN python -m rebrowser_playwright install chromium chromium-headless-shell
 
 COPY . .
 
