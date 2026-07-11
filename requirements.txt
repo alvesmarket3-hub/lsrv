@@ -1,1 +1,2 @@
-rebrowser-playwright==1.40.0
+rebrowser-playwright
+playwright-stealth
