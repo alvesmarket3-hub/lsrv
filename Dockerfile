@@ -10,11 +10,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Playwright kurulumu (rebrowser-playwright için)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 🔥 KRİTİK DEĞİŞİKLİK: Hem chromium hem de headless shell'i kur!
-RUN playwright install chromium chromium-headless-shell
+# 🔥 TÜM TARAYICILARI KUR (headless shell dahil)
+RUN playwright install
 
 COPY . .
 
