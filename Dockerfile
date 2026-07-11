@@ -2,18 +2,18 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Sistem bağımlılıklarını yükle (Playwright Linux'ta bunlara ihtiyaç duyar)
+# Sistem bağımlılıklarını yükle (Playwright için zorunlu)
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Önce bağımlılıkları kopyala ve kur
+# Önce requirements.txt'yi kopyala ve pip ile kur
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Playwright'un tarayıcısını ve tüm sistem bağımlılıklarını indir (BU ÇOK ÖNEMLİ)
+# Playwright tarayıcısını ve bağımlılıklarını indir (BU ADIM ÇOK ÖNEMLİ)
 RUN playwright install chromium
 RUN playwright install-deps
 
@@ -21,4 +21,5 @@ RUN playwright install-deps
 COPY main.py .
 COPY accounts.txt .
 
-CMD ["python", "main.py"]
+# -u ile çalıştır ki loglar anında görünsün
+CMD ["python", "-u", "main.py"]
