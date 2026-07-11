@@ -17,27 +17,25 @@ def load_accounts():
             line = line.strip()
             if not line:
                 continue
-            # Önce iki ayırıcıya göre böl: kullanıcı, şifre, geri kalan
+            # Önce kullanıcı ve şifreyi ayır
             parts = line.split(":", 2)
-            if len(parts) >= 3:
-                user = parts[0]
-                pwd = parts[1]
-                rest = parts[2]  # örn: "https://smmsem.com:tls-free"
-                # rest'i son ':' ile ayır
-                if ":" in rest:
-                    url, method = rest.rsplit(":", 1)
-                else:
-                    url = rest
-                    method = "browser-free"
-                accounts.append({
-                    "id": str(idx),
-                    "user": user,
-                    "pass": pwd,
-                    "url": url,
-                    "method": method
-                })
-            else:
+            if len(parts) < 3:
                 print(f"⚠️ Geçersiz satır: {line}")
+                continue
+            user, pwd, rest = parts[0], parts[1], parts[2]
+            # rest içinde URL ve method'u son ':' ile ayır
+            if ":" in rest:
+                url, method = rest.rsplit(":", 1)
+            else:
+                url = rest
+                method = "browser-free"
+            accounts.append({
+                "id": str(idx),
+                "user": user,
+                "pass": pwd,
+                "url": url,
+                "method": method
+            })
     return accounts
 
 def attack_worker(account):
