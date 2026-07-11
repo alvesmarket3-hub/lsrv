@@ -11,17 +11,24 @@ def load_accounts():
     if not os.path.exists(ACCOUNTS_FILE):
         print(f"❌ {ACCOUNTS_FILE} bulunamadı! Örnek hesap ile devam ediliyor.")
         return [{"id": "1", "user": "dummy", "pass": "dummy", "url": "https://example.com", "method": "browser-free"}]
-    
+
     with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
         for idx, line in enumerate(f, 1):
             line = line.strip()
             if not line:
                 continue
-            # KRİTİK: URL'deki ://'yi korumak için maxsplit=3 kullanıyoruz
-            parts = line.split(":", 3)
+            # Önce iki ayırıcıya göre böl: kullanıcı, şifre, geri kalan
+            parts = line.split(":", 2)
             if len(parts) >= 3:
-                user, pwd, url = parts[0], parts[1], parts[2]
-                method = parts[3] if len(parts) >= 4 else "browser-free"
+                user = parts[0]
+                pwd = parts[1]
+                rest = parts[2]  # örn: "https://smmsem.com:tls-free"
+                # rest'i son ':' ile ayır
+                if ":" in rest:
+                    url, method = rest.rsplit(":", 1)
+                else:
+                    url = rest
+                    method = "browser-free"
                 accounts.append({
                     "id": str(idx),
                     "user": user,
@@ -34,7 +41,6 @@ def load_accounts():
     return accounts
 
 def attack_worker(account):
-    acc_id = account["id"]
     username = account["user"]
     password = account["pass"]
     target_url = account["url"]
@@ -68,10 +74,7 @@ def attack_worker(account):
                     page.fill("#username", username)
                     page.fill("#password", password)
                     page.click("button.btn-submit")
-                    try:
-                        page.wait_for_url(lambda url: "/dash" in url, timeout=30000)
-                    except:
-                        pass
+                    page.wait_for_url(lambda url: "/dash" in url, timeout=30000)
                     print(f"[{username}] ✅ Giriş başarılı.")
                     consecutive_errors = 0
                 except Exception as login_err:
