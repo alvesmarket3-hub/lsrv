@@ -12,8 +12,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 🔥 KRİTİK: Python modülü olarak çalıştır, CLI'dan değil!
-RUN python -m playwright install chromium chromium-headless-shell
+# Artık playwright paketi kurulu olduğu için CLI çalışır
+RUN playwright install chromium chromium-headless-shell
 
 COPY . .
 
